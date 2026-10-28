@@ -120,6 +120,17 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padd
 .win{background:#9be36b1a;border:1px solid #9be36b55;border-radius:10px;padding:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}
 .win[hidden]{display:none}
 .win b{color:#9be36b}
+/* midi */
+.mdot{width:8px;height:8px;border-radius:50%;background:var(--acc2);opacity:.25;flex:none;transition:opacity .08s}
+.mdot.hit{opacity:1}
+.mdot[hidden]{display:none}
+#learnBar{position:fixed;left:12px;right:12px;top:calc(66px + env(safe-area-inset-top));z-index:30;background:var(--panel2);border:1px solid var(--acc2);border-radius:12px;padding:8px 12px;display:flex;gap:10px;align-items:center;font-size:12px;box-shadow:0 6px 20px #000a;max-width:976px;margin:0 auto}
+#learnBar[hidden]{display:none}
+#learnBar span{flex:1}
+body.midilearn .knob{outline:1px dashed #3fe0c090;outline-offset:1px;border-radius:10px;cursor:pointer}
+body.midilearn .knob.lsel{outline:2px solid var(--acc2);background:#3fe0c018}
+.knob.mapped .kl::after{content:' \2022';color:var(--acc2)}
+#midiMaps:empty{display:none}
 /* start overlay */
 #start{position:fixed;inset:0;z-index:100;background:radial-gradient(circle at 50% 35%,#1d1a24,#0d0e12 70%);display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 #start h1{font-size:34px;letter-spacing:.04em;line-height:1.1;margin:0 0 10px;color:var(--acc);font-weight:800;text-transform:uppercase}
@@ -143,11 +154,13 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padd
 
 <header>
   <div class="brand">JUST STAY HOME<br>&amp; PLAY SYNTHS</div>
+  <span class="mdot" id="midiDot" hidden title="MIDI activity"></span>
   <canvas id="scope" title="Tap: scope / spectrum"></canvas>
   <button class="iconbtn" id="hPlay" title="Play / stop drums">▶</button>
   <button class="iconbtn" id="panic" title="All notes off" style="font-size:11px">OFF</button>
 </header>
 
+<div id="learnBar" hidden><span id="learnMsg"></span><button class="btn sm" id="learnDone">Done</button></div>
 <main>
   <!-- SYNTH -->
   <section class="tab active" id="t-synth">
@@ -222,6 +235,18 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padd
       <div class="panel" style="--kc:var(--acc3)"><h3>Reverb</h3><div class="row" id="fxVerb"></div></div>
       <div class="panel" style="--kc:var(--acc4)"><h3>Mix</h3><div class="row" id="fxMix"></div></div>
     </div>
+    <div class="panel" style="--kc:var(--acc2)" id="midiPanel">
+      <h3>MIDI <span class="dim" id="midiStat">not connected</span></h3>
+      <div class="row" style="gap:6px">
+        <button class="btn" id="midiBtn">Connect MIDI</button>
+        <select id="midiIn" class="sel" hidden></select>
+        <select id="midiCh" class="sel" hidden></select>
+        <button class="btn" id="midiLearnBtn" hidden>MIDI learn</button>
+        <button class="btn sm" id="midiClear" hidden>Clear mappings</button>
+      </div>
+      <p class="hint" id="midiHint">Plug in a MIDI keyboard or controller. Notes, velocity, sustain pedal and pitch bend just work, and the mod wheel controls LFO depth. Use MIDI learn to put any knob on a hardware knob or slider.</p>
+      <div id="midiMaps" class="hint"></div>
+    </div>
     <div class="panel" style="--kc:var(--acc5)" id="recPanel">
       <h3>Recorder</h3>
       <div class="row"><button class="btn" id="recBtn">● Record</button><span id="recTime" class="dim">0:00</span></div>
@@ -232,7 +257,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padd
         <li>Drag knobs up/down (or sideways). Double-tap a knob to reset it.</li>
         <li>Tap the scope at the top to switch to a spectrum view.</li>
         <li>Lower on a key = louder. Hold latches notes so you can tweak knobs with both hands.</li>
-        <li>Computer keys: <kbd>A W S E D F T G Y H U J K</kbd> play notes, <kbd>Z</kbd>/<kbd>X</kbd> octave, <kbd>Space</kbd> drums.</li>
+        <li>Computer keys: <kbd>A W S E D F T G Y H U J K O L P ; '</kbd> play notes, <kbd>Z</kbd>/<kbd>X</kbd> octave, <kbd>Space</kbd> drums.</li>
+        <li>MIDI keyboards and controllers work in Chrome, Edge and Firefox (not Safari). Connect them in the MIDI panel above.</li>
         <li>Everything you change is saved in this browser automatically.</li>
       </ul>
     </div>
@@ -314,7 +340,7 @@ let saveT;
 function saveSoon(){clearTimeout(saveT);saveT=setTimeout(()=>{store.set('S',S);store.set('F',F);store.set('H',H);store.set('SEQ',SEQ);store.set('PAT',PAT);store.set('DP',DP);store.set('PADS',PADS)},300)}
 
 /* ================= audio graph ================= */
-let ctx,master,comp,analyser,synthIn,trem,shaper,synthOut,drumBus,delayIn,delay,dlp,dfb,verbSend,dverbGain,conv,lfo,lfoGain,noiseBuf,recDest,customWave=null;
+let bendSrc=null,ctx,master,comp,analyser,synthIn,trem,shaper,synthOut,drumBus,delayIn,delay,dlp,dfb,verbSend,dverbGain,conv,lfo,lfoGain,noiseBuf,recDest,customWave=null;
 
 function initAudio(){
   if(ctx)return;
@@ -340,6 +366,7 @@ function initAudio(){
   synthOut.connect(verbSend);verbSend.connect(conv);drumBus.connect(dverbGain);dverbGain.connect(conv);conv.connect(master);
 
   lfo=ctx.createOscillator();lfoGain=ctx.createGain();lfo.connect(lfoGain);lfo.start();
+  if(ctx.createConstantSource){bendSrc=ctx.createConstantSource();bendSrc.offset.value=0;bendSrc.start()}
 
   noiseBuf=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate);
   const nd=noiseBuf.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
@@ -397,6 +424,7 @@ function makeVoice(f,vel,o={}){
   o1.start(t);o2.start(t);ns.start(t,Math.random());
   const v={o1,o2,ns,g1,g2,gn,flt,vca,f};
   connectLfo(v);
+  if(bendSrc){bendSrc.connect(o1.detune);bendSrc.connect(o2.detune)}
   return v;
 }
 function releaseVoice(v,r){
@@ -404,7 +432,7 @@ function releaseVoice(v,r){
   hold(v.vca.gain,t);v.vca.gain.setTargetAtTime(0,t,r/4);
   const end=t+r*1.6+.05;
   [v.o1,v.o2,v.ns].forEach(n=>{try{n.stop(end)}catch(e){}});
-  v.o1.onended=()=>{try{lfoGain.disconnect(v.o1.detune)}catch(e){}try{lfoGain.disconnect(v.o2.detune)}catch(e){}try{lfoGain.disconnect(v.flt.detune)}catch(e){}v.vca.disconnect()};
+  v.o1.onended=()=>{try{lfoGain.disconnect(v.o1.detune)}catch(e){}try{lfoGain.disconnect(v.o2.detune)}catch(e){}try{lfoGain.disconnect(v.flt.detune)}catch(e){}if(bendSrc){try{bendSrc.disconnect(v.o1.detune)}catch(e){}try{bendSrc.disconnect(v.o2.detune)}catch(e){}}v.vca.disconnect()};
 }
 function noteOn(id,midi,vel=.85,o){
   if(!ctx)return;
@@ -418,6 +446,7 @@ function noteOff(id,fast){
 }
 function panic(){
   if(!ctx)return;
+  sustained.clear();sustain=false;setBend(0);
   voices.forEach(v=>releaseVoice(v,.03));voices.clear();
   padV.forEach(v=>releaseVoice(v,.03));padV.clear();
   kbPtr.clear();droneOn=false;$('#droneBtn').classList.remove('on');markKeys();
@@ -462,7 +491,8 @@ function applyF(k){
 }
 
 /* ================= UI widgets ================= */
-const allKnobs=[],allSegs=[];
+const allKnobs=[],allSegs=[],tempKnobs=[],tempSegs=[],kIds={};
+let midiLearn=false;
 function arc(cx,cy,r,a0,a1){const p=a=>[cx+r*Math.sin(a*Math.PI/180),cy-r*Math.cos(a*Math.PI/180)];const [x0,y0]=p(a0),[x1,y1]=p(a1);return `M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 ${a1-a0>180?1:0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`}
 function knob(parent,o){
   const {min,max,log,step}=o,fmt=o.fmt||fN;
@@ -476,6 +506,7 @@ function knob(parent,o){
   function setV(v){v=clamp(v,min,max);if(step)v=Math.round(v/step)*step;if(v===o.get())return;o.set(v);render()}
   let pid=null,sx=0,sy=0,st=0,lastTap=0;
   e.addEventListener('pointerdown',ev=>{
+    if(midiLearn&&!o.temp){ev.preventDefault();learnPick(k);return}
     ev.preventDefault();pid=ev.pointerId;try{e.setPointerCapture(pid)}catch(_){}
     sx=ev.clientX;sy=ev.clientY;st=toT(o.get());e.classList.add('active');
     const now=performance.now();if(now-lastTap<300&&o.def!=null){setV(o.def);st=toT(o.get());saveSoon()}lastTap=now;
@@ -484,19 +515,28 @@ function knob(parent,o){
   const up=ev=>{if(ev.pointerId!==pid)return;pid=null;e.classList.remove('active');saveSoon();if(o.onEnd)o.onEnd()};
   e.addEventListener('pointerup',up);e.addEventListener('pointercancel',up);
   e.addEventListener('wheel',ev=>{ev.preventDefault();setV(fromT(clamp(toT(o.get())-Math.sign(ev.deltaY)*.025,0,1)));saveSoon()},{passive:false});
-  render();const k={render,el:e};allKnobs.push(k);return k;
+  render();
+  const k={render,el:e,label:o.label,setT:t=>setV(fromT(clamp(t,0,1)))};
+  if(o.temp)tempKnobs.push(k);
+  else{
+    const h=parent.closest('.panel')?.querySelector('h3')?.firstChild?.textContent?.trim();
+    const tab=(parent.closest('.tab')?.id||'').replace('t-','');
+    const base=(h||tab.charAt(0).toUpperCase()+tab.slice(1))+' · '+o.label;
+    const n=kIds[base]=(kIds[base]||0)+1;k.id=base+(n>1?' '+n:'');allKnobs.push(k);
+  }
+  return k;
 }
 function kb(parent,obj,key,label,min,max,x={}){
   const defs=obj===S?DEF_S:obj===F?DEF_F:{};
   return knob(parent,Object.assign({label,min,max,def:defs[key],get:()=>obj[key],set:v=>{obj[key]=v;if(x.on)x.on(v);else if(obj===S)applyS(key);else if(obj===F)applyF(key)}},x));
 }
-function seg(parent,label,opts,get,set){
+function seg(parent,label,opts,get,set,temp){
   const w=el('div','segwrap');if(label)w.appendChild(el('span','seglab',label));
   const s=el('div','seg');
   opts.forEach(([v,l])=>{const b=el('button','',l);b.dataset.v=v;b.onclick=()=>{set(v);render();saveSoon()};s.appendChild(b)});
   w.appendChild(s);parent.appendChild(w);
   function render(){[...s.children].forEach(b=>b.classList.toggle('on',b.dataset.v===String(get())))}
-  render();allSegs.push(render);return render;
+  render();(temp?tempSegs:allSegs).push(render);return render;
 }
 function renderUI(){allKnobs.forEach(k=>k.render());allSegs.forEach(r=>r())}
 const ico=d=>`<svg viewBox="0 0 16 16"><path d="${d}"/></svg>`;
@@ -577,16 +617,28 @@ kbEl.addEventListener('contextmenu',e=>e.preventDefault());
 $('#octDn').onclick=()=>{S.oct=clamp(S.oct-1,-3,3);buildKeys();saveSoon()};
 $('#octUp').onclick=()=>{S.oct=clamp(S.oct+1,-3,3);buildKeys();saveSoon()};
 $('#holdBtn').onclick=e=>{hold_=!hold_;e.currentTarget.classList.toggle('on',hold_);if(!hold_)[...voices.keys()].filter(id=>id[0]==='h').forEach(id=>noteOff(id))};
-const KMAP='awsedftgyhujkolp;\'';
+// physical key positions (e.code), so it works the same on any keyboard layout and with Shift held
+const KCODES=['KeyA','KeyW','KeyS','KeyE','KeyD','KeyF','KeyT','KeyG','KeyY','KeyH','KeyU','KeyJ','KeyK','KeyO','KeyL','KeyP','Semicolon','Quote'];
+const kHeld=new Set();
+function releaseKeys(){kHeld.forEach(c=>noteOff('k'+c));kHeld.clear()}
 addEventListener('keydown',e=>{
-  if(e.repeat||e.metaKey||e.ctrlKey||e.altKey||/SELECT|INPUT/.test(e.target.tagName))return;
-  const k=e.key.toLowerCase();
-  if(k===' '){e.preventDefault();ensureAudio();playing?stopSeq():startSeq();return}
-  if(k==='z'){S.oct=clamp(S.oct-1,-3,3);buildKeys();return}
-  if(k==='x'){S.oct=clamp(S.oct+1,-3,3);buildKeys();return}
-  const i=KMAP.indexOf(k);if(i>=0){ensureAudio();noteOn('k'+k,48+S.oct*12+i)}
+  if(e.metaKey||e.ctrlKey||e.altKey)return;
+  const t=e.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable))return;
+  const c=e.code,i=KCODES.indexOf(c);
+  if(i<0&&c!=='Space'&&c!=='KeyZ'&&c!=='KeyX')return;
+  // Stop the browser acting on our keys: Firefox Quick Find (' and /), dropdown type-ahead, button activation
+  e.preventDefault();
+  if(t&&t.blur&&(t.tagName==='SELECT'||t.tagName==='BUTTON'))t.blur();
+  if(e.repeat)return;
+  if(c==='Space'){ensureAudio();playing?stopSeq():startSeq();return}
+  if(c==='KeyZ'||c==='KeyX'){S.oct=clamp(S.oct+(c==='KeyX'?1:-1),-3,3);buildKeys();saveSoon();return}
+  ensureAudio();kHeld.add(c);noteOn('k'+c,48+S.oct*12+i);
 });
-addEventListener('keyup',e=>noteOff('k'+e.key.toLowerCase()));
+addEventListener('keyup',e=>{if(kHeld.delete(e.code))noteOff('k'+e.code)});
+addEventListener('blur',releaseKeys);
+// a dropdown that keeps focus would otherwise eat the next key presses
+document.addEventListener('change',e=>{if(e.target.tagName==='SELECT')e.target.blur()});
 addEventListener('resize',()=>{if((innerWidth<640?1:2)!==kbOcts)buildKeys()});
 
 /* ================= drums ================= */
@@ -1007,7 +1059,7 @@ function lHint(){
   const d=lDist(worst),dir=LP[worst]<TP[worst]?'up':'down';
   msg.textContent=`${c.label}: turn it ${dir}${d>.35?' a lot':d<.1?' just a little':''}.`;
 }
-function lReveal(){Object.assign(LP,TP);allKnobs.forEach(k=>k.render());allSegs.forEach(r=>r());lChanged(true)}
+function lReveal(){Object.assign(LP,TP);tempKnobs.forEach(k=>k.render());tempSegs.forEach(r=>r());lChanged(true)}
 function lSend(){
   const keys=Object.keys(DEF_S).filter(k=>k in LP&&k!=='vol'&&k!=='oct');
   keys.forEach(k=>S[k]=LP[k]);Object.keys(S).forEach(applyS);renderUI();saveSoon();
@@ -1051,7 +1103,7 @@ function openLesson(i){
   const ls=LESSONS[i];
   L=Object.assign({len:1.6,hold:1,snap:.5,win:.016,base:{},tol:{}},ls);L.idx=i;
   LP=Object.assign({},LBASE,L.base,L.start);TP=Object.assign({},LBASE,L.base,L.target);
-  tA=mA=null;lWon=false;lCtrlEls={};
+  tA=mA=null;lWon=false;lCtrlEls={};tempKnobs.length=0;tempSegs.length=0;
   const box=$('#learnBody'),V=L.views,hasTime=V.some(v=>v!=='wave');
   const leg=[];
   if(V.includes('wave'))leg.push(`<span><i style="background:var(--acc2)"></i>your wave</span>`);
@@ -1081,8 +1133,8 @@ function openLesson(i){
    </div>`;
   const cbox=$('#lCtrls'),krow=el('div','row');
   L.ctrl.forEach(k=>{const c=LCTRL[k];
-    if(c.seg){const before=cbox.childElementCount;seg(cbox,c.label,c.seg,()=>LP[k],v=>{LP[k]=v;lChanged(true)});lCtrlEls[k]=cbox.children[before]}
-    else lCtrlEls[k]=knob(krow,{label:c.label,min:c.min,max:c.max,log:c.log,step:c.step,fmt:c.fmt,def:LP[k],get:()=>LP[k],set:v=>{LP[k]=v;lChanged(false)},onEnd:()=>{if(lAuto)lPlay(LP)}}).el;
+    if(c.seg){const before=cbox.childElementCount;seg(cbox,c.label,c.seg,()=>LP[k],v=>{LP[k]=v;lChanged(true)},true);lCtrlEls[k]=cbox.children[before]}
+    else lCtrlEls[k]=knob(krow,{temp:true,label:c.label,min:c.min,max:c.max,log:c.log,step:c.step,fmt:c.fmt,def:LP[k],get:()=>LP[k],set:v=>{LP[k]=v;lChanged(false)},onEnd:()=>{if(lAuto)lPlay(LP)}}).el;
   });
   cbox.appendChild(krow);
   $('#lBack').onclick=lessonList;
@@ -1097,6 +1149,87 @@ function openLesson(i){
   renderMine();
 }
 lessonList();
+
+/* ================= MIDI ================= */
+const MID=Object.assign({auto:false,input:'all',ch:0,map:{}},store.get('MIDI',{}));
+let midi=null,learnK=null,sustain=false,blinkT=0;const sustained=new Set();
+const saveMidi=()=>store.set('MIDI',MID);
+const midiStat=t=>{$('#midiStat').textContent=t};
+async function midiConnect(){
+  if(!navigator.requestMIDIAccess){
+    midiStat('not supported here');
+    $('#midiHint').textContent='This browser doesn\'t support Web MIDI. Chrome, Edge and Firefox on a computer or Android do; Safari, iPhone and iPad don\'t.';
+    return;
+  }
+  if(midi)return;
+  midiStat('asking permission…');
+  try{midi=await navigator.requestMIDIAccess()}
+  catch(e){midiStat('permission blocked');MID.auto=false;saveMidi();return}
+  MID.auto=true;saveMidi();
+  midi.onstatechange=e=>{if(e.port&&e.port.type==='input'&&e.port.state==='disconnected')midiAllOff();midiRefresh()};
+  midiRefresh();
+  ['#midiIn','#midiCh','#midiLearnBtn','#midiClear'].forEach(q=>$(q).hidden=false);
+  $('#midiBtn').hidden=true;$('#midiDot').hidden=false;
+}
+function midiRefresh(){
+  const ins=[...midi.inputs.values()],sel=$('#midiIn');
+  sel.innerHTML='';
+  [['all','All MIDI inputs'],...ins.map(i=>[i.id,i.name||'MIDI input'])].forEach(([v,l])=>{const o=el('option','',l);o.value=v;sel.appendChild(o)});
+  sel.value=ins.some(i=>i.id===MID.input)?MID.input:'all';
+  ins.forEach(i=>i.onmidimessage=onMidi);
+  midiStat(ins.length?ins.length+' device'+(ins.length>1?'s':'')+' connected':'no devices yet, plug one in');
+}
+function midiAllOff(){[...voices.keys()].filter(id=>id[0]==='m').forEach(id=>noteOff(id));sustained.clear();sustain=false;setBend(0)}
+function midiBlink(){const now=performance.now();if(now-blinkT<60)return;blinkT=now;const d=$('#midiDot');d.classList.add('hit');setTimeout(()=>d.classList.remove('hit'),70)}
+function onMidi(e){
+  const src=e.currentTarget||e.target;
+  if(MID.input!=='all'&&src&&src.id!==MID.input&&midi.inputs.has(MID.input))return;
+  const d=e.data;if(!d||d.length<2)return;
+  const type=d[0]&0xf0,ch=(d[0]&15)+1,a=d[1],b=d.length>2?d[2]:0;
+  if(type<0x80||type>0xE0)return;
+  if(MID.ch&&ch!==MID.ch)return;
+  midiBlink();
+  if(type===0x90&&b>0){ensureAudio();sustained.delete(a);noteOn('m'+a,a,.25+.75*b/127)}
+  else if(type===0x80||type===0x90){if(sustain)sustained.add(a);else noteOff('m'+a)}
+  else if(type===0xB0)midiCC(a,b);
+  else if(type===0xE0)setBend(((b<<7)|a)-8192);
+}
+function setBend(v){if(!ctx||!bendSrc)return;bendSrc.offset.setTargetAtTime(v/8192*200,ctx.currentTime,.008)}
+function midiCC(cc,v){
+  if(cc===64){sustain=v>=64;if(!sustain){sustained.forEach(n=>noteOff('m'+n));sustained.clear()}return}
+  if(cc===120||cc===123){midiAllOff();return}
+  if(midiLearn&&learnK){
+    Object.keys(MID.map).forEach(c=>{if(MID.map[c]===learnK.id)delete MID.map[c]});
+    MID.map[cc]=learnK.id;saveMidi();
+    learnK.el.classList.remove('lsel');learnMsg(`CC ${cc} → ${learnK.id}. Tap another knob, or Done.`);learnK=null;
+    showMaps();return;
+  }
+  const id=MID.map[cc];
+  if(id){const k=allKnobs.find(k=>k.id===id);if(k){k.setT(v/127);saveSoon()}return}
+  if(cc===1){S.lfoDepth=v/127;applyS('lfoDepth');allKnobs.forEach(k=>{if(k.id==='LFO · Depth')k.render()});saveSoon()}
+}
+const learnMsg=t=>{$('#learnMsg').textContent=t};
+function setLearn(on){
+  midiLearn=on;document.body.classList.toggle('midilearn',on);$('#learnBar').hidden=!on;$('#midiLearnBtn').classList.toggle('on',on);
+  if(learnK){learnK.el.classList.remove('lsel');learnK=null}
+  if(on)learnMsg('MIDI learn: tap any knob (on any tab), then move a knob or slider on your controller.');
+}
+function learnPick(k){if(learnK)learnK.el.classList.remove('lsel');learnK=k;k.el.classList.add('lsel');learnMsg(`Now move a control on your controller for ${k.id}…`)}
+function showMaps(){
+  const m=Object.entries(MID.map);
+  $('#midiMaps').textContent=m.length?'Mapped: '+m.map(([c,id])=>`CC ${c} → ${id}`).join(' · '):'';
+  const ids=new Set(Object.values(MID.map));allKnobs.forEach(k=>k.el.classList.toggle('mapped',ids.has(k.id)));
+}
+(function(){
+  const ch=$('#midiCh');[[0,'All channels'],...Array.from({length:16},(_,i)=>[i+1,'Channel '+(i+1)])].forEach(([v,l])=>{const o=el('option','',l);o.value=v;ch.appendChild(o)});
+  ch.value=MID.ch;ch.onchange=()=>{MID.ch=+ch.value;saveMidi();midiAllOff()};
+  $('#midiIn').onchange=e=>{MID.input=e.target.value;saveMidi();midiAllOff()};
+  $('#midiBtn').onclick=()=>{ensureAudio();midiConnect()};
+  $('#midiLearnBtn').onclick=()=>setLearn(!midiLearn);
+  $('#learnDone').onclick=()=>setLearn(false);
+  $('#midiClear').onclick=()=>{MID.map={};saveMidi();showMaps()};
+  showMaps();
+})();
 
 /* ================= tabs, scope, loop ================= */
 let activeTab='synth';
@@ -1135,11 +1268,11 @@ $('#panic').onclick=panic;
 
 let wl=null;
 async function wake(){try{if('wakeLock' in navigator&&document.visibilityState==='visible'&&!wl){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>wl=null)}}catch(e){}}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){wake();if(ctx&&ctx.state!=='running')ctx.resume()}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'){releaseKeys();return}wake();if(ctx&&ctx.state!=='running')ctx.resume()});
 
 /* logo + start */
 (function(){let p='';for(let x=0;x<=260;x+=2){const y=30+Math.sin(x/14)*14*Math.sin(x/260*Math.PI)+Math.sin(x/4.3)*4*Math.sin(x/260*Math.PI);p+=(x?'L':'M')+x+' '+y.toFixed(1)}$('#logoWave').setAttribute('d',p)})();
-$('#startBtn').onclick=()=>{ensureAudio();$('#start').style.display='none';wake()};
+$('#startBtn').onclick=()=>{ensureAudio();$('#start').style.display='none';wake();if(MID.auto)midiConnect()};
 document.addEventListener('pointerdown',()=>{if(ctx&&ctx.state!=='running')ctx.resume()},true);
 
 buildKeys();buildGrid();showTrack();renderUI();

@@ -8,6 +8,7 @@ A pocket synth lab that runs entirely in the browser — no build step, no depen
 - **Waves** — draw 16 harmonics to build your own waveform; it becomes Osc 1's "custom" wave.
 - **Learn** — 17 bite-size lessons on oscillators, pitch, mixing, intervals, detune, filters, resonance, envelopes, LFOs and noise. Each ends in a challenge: tweak the knobs until your sound's wave and loudness/brightness/pitch graphs match a target. Hints, progress tracking, and a button to send your patch to the Synth.
 - **FX** — drive, delay, reverb, mix levels and a recorder that saves takes as audio files.
+- **MIDI** — plug in a keyboard or controller (Chrome, Edge, Firefox; not Safari/iOS). Notes with velocity, sustain pedal, pitch bend (±2 semitones), mod wheel → LFO depth, input/channel select, and MIDI learn to map any knob to a hardware control.
 
 Everything you change is saved in your browser's local storage.
 
@@ -23,4 +24,4 @@ Everything you change is saved in your browser's local storage.
 
 - Drag knobs up/down; double-tap to reset.
 - iPhone: if there's no sound, flip the silent switch off.
-- Desktop keys: `A W S E D F T G Y H U J K` play notes, `Z`/`X` change octave, `Space` starts/stops drums.
+- Desktop keys: `A W S E D F T G Y H U J K O L P ; '` play notes, `Z`/`X` change octave, `Space` starts/stops drums.
